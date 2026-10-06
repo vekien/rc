@@ -1,0 +1,52 @@
+name: Scrape NCM auction
+
+on:
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: "Only fetch the first N pages (blank = all)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "17 */6 * * *"   # refresh bids every 6 hours
+
+permissions:
+  contents: read
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt pytest
+
+      - name: Run parser tests
+        run: python -m pytest -q tests
+
+      - name: Scrape and build gallery
+        env:
+          PAGES: ${{ inputs.pages }}
+        run: |
+          python ncm_gallery.py ${PAGES:+--pages "$PAGES"} 2>&1 | tee scrape.log
+
+      - name: Summary
+        run: |
+          {
+            echo "### NCM scrape"
+            echo '```'
+            tail -n 1 scrape.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ncm_gallery
+          path: ncm_gallery.html
+          if-no-files-found: error
